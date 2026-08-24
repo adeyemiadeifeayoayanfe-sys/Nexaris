@@ -34,5 +34,8 @@
   },
   "dependencies": {
     "side-channel": "^1.1.1"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.62.4"
   }
 }
