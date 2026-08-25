@@ -1,6 +1,7 @@
-import { Menu, X } from 'lucide-react';
+import { Menu, Moon, Sun, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
+import { useTheme } from '../hooks/useTheme';
 
 const navItems = [
   ['/', 'Home'],
@@ -13,6 +14,7 @@ const navItems = [
 
 export function SiteLayout() {
   const [open, setOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <div className="site-shell">
@@ -43,6 +45,10 @@ export function SiteLayout() {
           <NavLink className="nav-link" onClick={() => setOpen(false)} to="/auth">
             Sign In
           </NavLink>
+          <button className="theme-toggle" onClick={toggleTheme} type="button">
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+          </button>
           <Link className="button button-primary nav-cta" onClick={() => setOpen(false)} to="/request-project">
             Request a Project
           </Link>

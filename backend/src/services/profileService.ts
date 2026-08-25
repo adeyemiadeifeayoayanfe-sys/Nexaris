@@ -14,3 +14,19 @@ export async function getProfileById(userId: string): Promise<ProfileRecord | nu
 
   return data;
 }
+
+export async function markWorkerApplicationActivated(userId: string) {
+  const { error } = await supabaseAdmin
+    .from('job_applications')
+    .update({
+      account_status: 'ACTIVE',
+      activated_at: new Date().toISOString()
+    })
+    .eq('approved_profile_id', userId)
+    .eq('status', 'APPROVED')
+    .neq('account_status', 'ACTIVE');
+
+  if (error) {
+    throw error;
+  }
+}

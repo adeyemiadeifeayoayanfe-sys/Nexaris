@@ -7,6 +7,7 @@ import {
   listJobApplicationsController,
   listProjectRequestsController,
   listWorkersController,
+  resendApplicationInvitationController,
   updateJobApplicationStatusController,
   updateProjectRequestStatusController,
   updateWorkerStatusController
@@ -24,5 +25,6 @@ adminRouter.patch('/project-requests/:id', updateProjectRequestStatusController)
 adminRouter.get('/applications', listJobApplicationsController);
 adminRouter.patch('/applications/:id', updateJobApplicationStatusController);
 adminRouter.post('/applications/:id/approve', approveApplicationController);
+adminRouter.post('/applications/:id/resend-invitation', resendApplicationInvitationController);
 adminRouter.get('/workers', listWorkersController);
 adminRouter.patch('/workers/:id', updateWorkerStatusController);

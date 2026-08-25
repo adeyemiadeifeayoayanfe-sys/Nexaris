@@ -1,4 +1,4 @@
-import { getProfileById } from '../services/profileService.js';
+import { getProfileById, markWorkerApplicationActivated } from '../services/profileService.js';
 import type { HttpRequest, HttpResponse } from '../types/http.js';
 
 export async function authSessionController(request: HttpRequest, response: HttpResponse) {
@@ -16,6 +16,10 @@ export async function authSessionController(request: HttpRequest, response: Http
     return response.status(404).json({
       error: 'Profile not found'
     });
+  }
+
+  if (profile.role === 'WORKER' && profile.status === 'ACTIVE') {
+    await markWorkerApplicationActivated(profile.id);
   }
 
   return response.json({

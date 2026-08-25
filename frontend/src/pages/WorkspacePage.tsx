@@ -129,7 +129,7 @@ export function WorkspacePage() {
     const css = files.find((file) => file.path === 'style.css')?.content ?? '';
     const js = files.find((file) => file.path === 'script.js')?.content ?? '';
 
-    return `${html}\n<style>${css}</style>\n<script>window.onerror = function(message, source, line, column) { parent.postMessage({ type: 'preview-error', message: String(message), line, column }, '*'); };<\/script>\n<script>${js}<\/script>`;
+    return `${html}\n<style>${css}</style>\n<script>window.onerror = function(message, source, line, column) { parent.postMessage({ type: 'preview-error', message: String(message), line, column }, '*'); };<script>\n<script>${js}<script>`;
   }, [workspace]);
 
   async function saveFile() {

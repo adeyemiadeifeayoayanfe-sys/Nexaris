@@ -1,9 +1,11 @@
+import { env } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { createActivityLog } from './activityService.js';
 import type {
   application_status,
   ProfileRecord,
-  request_status
+  request_status,
+  worker_account_status
 } from '../types/database.js';
 
 function mapSearchTerm(search?: string) {
@@ -46,6 +48,61 @@ async function generateUniqueUsername(fullName: string) {
     candidate = `${base}${suffix}`;
     suffix += 1;
   }
+}
+
+async function findAuthUserByEmail(email: string) {
+  let page = 1;
+
+  while (true) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage: 1000
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    const matchedUser = data.users.find((user) => user.email?.toLowerCase() === email);
+
+    if (matchedUser) {
+      return matchedUser;
+    }
+
+    if (data.users.length < 1000) {
+      return null;
+    }
+
+    page += 1;
+  }
+}
+
+function authRedirectTo() {
+  return new URL('/auth', env.FRONTEND_URL).toString();
+}
+
+function isAuthUserActive(user: { email_confirmed_at?: string | null; last_sign_in_at?: string | null }) {
+  return Boolean(user.email_confirmed_at || user.last_sign_in_at);
+}
+
+async function usernameForWorker(fullName: string, existingProfileId?: string | null) {
+  if (existingProfileId) {
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('username')
+      .eq('id', existingProfileId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data?.username) {
+      return data.username;
+    }
+  }
+
+  return generateUniqueUsername(fullName);
 }
 
 export async function getAdminDashboard() {
@@ -111,23 +168,10 @@ export async function createAdminAccount(input: {
   sendInvite: boolean;
 }) {
   const normalizedEmail = input.email.trim().toLowerCase();
-  const username = await generateUniqueUsername(input.fullName);
-  let authUserId: string | null = null;
+  const existingUser = await findAuthUserByEmail(normalizedEmail);
+  let authUserId = existingUser?.id ?? null;
 
-  const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000
-  });
-
-  if (listError) {
-    throw listError;
-  }
-
-  const matchedUser = usersData.users.find((user) => user.email?.toLowerCase() === normalizedEmail);
-
-  if (matchedUser) {
-    authUserId = matchedUser.id;
-  } else if (input.sendInvite) {
+  if (!authUserId && input.sendInvite) {
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       normalizedEmail,
       {
@@ -135,7 +179,7 @@ export async function createAdminAccount(input: {
           full_name: input.fullName,
           role: 'ADMIN'
         },
-        redirectTo: '/auth'
+        redirectTo: authRedirectTo()
       }
     );
 
@@ -144,13 +188,13 @@ export async function createAdminAccount(input: {
     }
 
     authUserId = inviteData.user?.id ?? null;
-  } else {
-    throw new Error('No existing auth user found for this email. Enable sendInvite to invite them.');
   }
 
   if (!authUserId) {
-    throw new Error('Unable to resolve an auth user for this admin.');
+    throw new Error('No existing auth user found for this email. Enable sendInvite to invite them.');
   }
+
+  const username = await usernameForWorker(input.fullName, authUserId);
 
   const { data: profile, error: profileError } = await supabaseAdmin
     .from('profiles')
@@ -189,7 +233,7 @@ export async function createAdminAccount(input: {
     profile,
     onboarding: {
       email: normalizedEmail,
-      inviteSent: input.sendInvite && !matchedUser
+      inviteSent: input.sendInvite && !existingUser
     }
   };
 }
@@ -329,18 +373,62 @@ export async function approveApplication(input: {
     throw applicationError;
   }
 
-  const username = await generateUniqueUsername(application.full_name);
+  if (application.status === 'APPROVED' && application.approved_profile_id) {
+    throw new Error('This application has already been approved.');
+  }
 
-  let authUserId: string | null = null;
+  const normalizedEmail = String(application.email ?? '').trim().toLowerCase();
 
-  if (input.sendInvite) {
+  if (!normalizedEmail) {
+    throw new Error('This application does not have a valid email address.');
+  }
+
+  const matchedUser = await findAuthUserByEmail(normalizedEmail);
+  let authUserId = matchedUser?.id ?? null;
+  let inviteSent = false;
+  let accountStatus: worker_account_status = 'NONE';
+
+  if (matchedUser) {
+    const { data: existingProfile, error: existingProfileError } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', matchedUser.id)
+      .maybeSingle();
+
+    if (existingProfileError) {
+      throw existingProfileError;
+    }
+
+    if (existingProfile?.role === 'ADMIN') {
+      throw new Error('This email already belongs to an admin account and cannot be approved as a worker.');
+    }
+
+    if (isAuthUserActive(matchedUser)) {
+      accountStatus = 'ACTIVE';
+    } else if (input.sendInvite) {
+      const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: authRedirectTo()
+      });
+
+      if (resetError) {
+        throw resetError;
+      }
+
+      inviteSent = true;
+      accountStatus = 'INVITATION_SENT';
+    } else {
+      accountStatus = 'EXISTING_ACCOUNT';
+    }
+  } else if (input.sendInvite) {
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-      application.email,
+      normalizedEmail,
       {
         data: {
-          full_name: application.full_name
+          full_name: application.full_name,
+          role: 'WORKER',
+          application_id: application.id
         },
-        redirectTo: `${new URL('../auth', 'http://localhost').pathname}`
+        redirectTo: authRedirectTo()
       }
     );
 
@@ -349,30 +437,22 @@ export async function approveApplication(input: {
     }
 
     authUserId = inviteData.user?.id ?? null;
-  } else {
-    const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers({
-      page: 1,
-      perPage: 200
-    });
-
-    if (listError) {
-      throw listError;
-    }
-
-    const matchedUser = usersData.users.find((user) => user.email?.toLowerCase() === application.email.toLowerCase());
-    authUserId = matchedUser?.id ?? null;
+    inviteSent = true;
+    accountStatus = 'INVITATION_SENT';
   }
 
   if (!authUserId) {
-    throw new Error('Unable to resolve an auth user for this application approval.');
+    throw new Error('Unable to resolve an auth user. Enable invitation sending for new applicants.');
   }
+
+  const username = await usernameForWorker(application.full_name, authUserId);
 
   const { data: profile, error: profileError } = await supabaseAdmin
     .from('profiles')
     .upsert(
       {
         id: authUserId,
-        email: application.email,
+        email: normalizedEmail,
         full_name: application.full_name,
         whatsapp_number: application.whatsapp_number,
         country: application.country,
@@ -391,14 +471,25 @@ export async function approveApplication(input: {
     throw profileError;
   }
 
+  const updatePayload: Record<string, string | null> = {
+    status: 'APPROVED',
+    reviewed_by: input.actorId,
+    reviewed_at: new Date().toISOString(),
+    approved_profile_id: authUserId,
+    account_status: accountStatus
+  };
+
+  if (inviteSent) {
+    updatePayload.invitation_sent_at = new Date().toISOString();
+  }
+
+  if (accountStatus === 'ACTIVE') {
+    updatePayload.activated_at = new Date().toISOString();
+  }
+
   const { error: updateApplicationError } = await supabaseAdmin
     .from('job_applications')
-    .update({
-      status: 'APPROVED',
-      reviewed_by: input.actorId,
-      reviewed_at: new Date().toISOString(),
-      approved_profile_id: authUserId
-    })
+    .update(updatePayload)
     .eq('id', input.applicationId);
 
   if (updateApplicationError) {
@@ -413,16 +504,106 @@ export async function approveApplication(input: {
     metadata: {
       applicationCode: application.application_code,
       approvedProfileId: authUserId,
-      username
+      username,
+      inviteSent,
+      accountStatus
     }
   });
 
   return {
     profile: profile as ProfileRecord,
     onboarding: {
-      email: application.email,
-      inviteSent: input.sendInvite
+      email: normalizedEmail,
+      inviteSent,
+      accountStatus
     }
+  };
+}
+
+export async function resendApplicationInvitation(input: { applicationId: string; actorId: string }) {
+  const { data: application, error: applicationError } = await supabaseAdmin
+    .from('job_applications')
+    .select('*')
+    .eq('id', input.applicationId)
+    .single();
+
+  if (applicationError) {
+    throw applicationError;
+  }
+
+  if (application.status !== 'APPROVED') {
+    throw new Error('Only approved applications can receive worker activation emails.');
+  }
+
+  const normalizedEmail = String(application.email ?? '').trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    throw new Error('This application does not have a valid email address.');
+  }
+
+  const matchedUser = await findAuthUserByEmail(normalizedEmail);
+
+  if (!matchedUser || matchedUser.id !== application.approved_profile_id) {
+    throw new Error('This approved application is not linked to the expected worker auth account.');
+  }
+
+  if (isAuthUserActive(matchedUser)) {
+    const { error: updateError } = await supabaseAdmin
+      .from('job_applications')
+      .update({
+        account_status: 'ACTIVE',
+        activated_at: new Date().toISOString()
+      })
+      .eq('id', input.applicationId);
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    return {
+      email: normalizedEmail,
+      inviteSent: false,
+      accountStatus: 'ACTIVE' as worker_account_status,
+      message: 'This worker account is already active.'
+    };
+  }
+
+  const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(normalizedEmail, {
+    redirectTo: authRedirectTo()
+  });
+
+  if (resetError) {
+    throw resetError;
+  }
+
+  const { error: updateError } = await supabaseAdmin
+    .from('job_applications')
+    .update({
+      account_status: 'INVITATION_SENT',
+      invitation_sent_at: new Date().toISOString()
+    })
+    .eq('id', input.applicationId);
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  await createActivityLog({
+    actorId: input.actorId,
+    action: 'job_application_invitation_resent',
+    subjectType: 'job_application',
+    subjectId: application.id,
+    metadata: {
+      applicationCode: application.application_code,
+      approvedProfileId: application.approved_profile_id
+    }
+  });
+
+  return {
+    email: normalizedEmail,
+    inviteSent: true,
+    accountStatus: 'INVITATION_SENT' as worker_account_status,
+    message: 'Invitation email resent.'
   };
 }
 

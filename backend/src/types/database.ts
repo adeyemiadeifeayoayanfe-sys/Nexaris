@@ -24,6 +24,7 @@ export type project_status =
 export type task_status = 'NOT_STARTED' | 'IN_PROGRESS' | 'IN_REVIEW' | 'COMPLETED' | 'REJECTED';
 export type task_priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type project_member_status = 'ACTIVE' | 'REMOVED' | 'INVITED';
+export type worker_account_status = 'NONE' | 'INVITATION_SENT' | 'ACTIVE' | 'EXISTING_ACCOUNT';
 export type notification_type =
   | 'TASK_ASSIGNED'
   | 'TASK_APPROVED'

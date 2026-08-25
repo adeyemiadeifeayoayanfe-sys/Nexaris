@@ -1,5 +1,5 @@
-import { FormEvent, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { FormEvent, useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 
@@ -17,12 +17,25 @@ function portalLabelForRole(role: string) {
 
 export function AuthPage() {
   const { session, profile, loading, error, signOut } = useAuth();
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<'signin' | 'signup' | 'set-password'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const searchParams = new URLSearchParams(window.location.search);
+    const authType = hashParams.get('type') ?? searchParams.get('type');
+
+    if (authType === 'invite' || authType === 'recovery') {
+      setMode('set-password');
+      setMessage('Set your Nexaris account password to finish activation.');
+    }
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,7 +49,26 @@ export function AuthPage() {
     }
 
     try {
-      if (mode === 'signin') {
+      if (mode === 'set-password') {
+        if (!session) {
+          throw new Error('Invitation session not found. Open the latest invitation email again.');
+        }
+
+        if (password !== confirmPassword) {
+          throw new Error('Passwords do not match.');
+        }
+
+        const { error: updateError } = await supabase.auth.updateUser({ password });
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        setPassword('');
+        setConfirmPassword('');
+        setMessage('Password set successfully. Redirecting to your worker portal.');
+        navigate('/worker');
+      } else if (mode === 'signin') {
         const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
         if (signInError) {
@@ -128,25 +160,45 @@ export function AuthPage() {
               Create Client Account
             </button>
           </div>
+          {mode === 'set-password' ? (
+            <div className="success-panel">
+              <strong>Worker account activation</strong>
+              <p>Create your own password. Nexaris admins cannot see or store this password.</p>
+            </div>
+          ) : null}
           {mode === 'signup' ? (
             <label>
               <span>Full Name</span>
               <input value={fullName} onChange={(event) => setFullName(event.target.value)} />
             </label>
           ) : null}
+          {mode !== 'set-password' ? (
+            <label>
+              <span>Email</span>
+              <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            </label>
+          ) : null}
           <label>
-            <span>Email</span>
-            <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-          </label>
-          <label>
-            <span>Password</span>
+            <span>{mode === 'set-password' ? 'New Password' : 'Password'}</span>
             <input required minLength={8} type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
           </label>
+          {mode === 'set-password' ? (
+            <label>
+              <span>Confirm Password</span>
+              <input required minLength={8} type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+            </label>
+          ) : null}
           {loading ? <p className="form-note">Checking current session...</p> : null}
           {error ? <p className="form-error">{error}</p> : null}
           {message ? <p className="form-note">{message}</p> : null}
           <button className="button button-primary" disabled={submitting} type="submit">
-            {submitting ? 'Submitting...' : mode === 'signin' ? 'Sign In' : 'Create Client Account'}
+            {submitting
+              ? 'Submitting...'
+              : mode === 'set-password'
+                ? 'Set Password'
+                : mode === 'signin'
+                  ? 'Sign In'
+                  : 'Create Client Account'}
           </button>
           <p className="form-note">
             Admin and worker accounts are assigned by Nexaris. Do not create a public account if you

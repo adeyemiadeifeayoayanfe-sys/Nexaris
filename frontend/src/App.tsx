@@ -6,7 +6,6 @@ import { AuthPage } from './pages/AuthPage';
 import { CareerDetailPage } from './pages/CareerDetailPage';
 import { CareersPage } from './pages/CareersPage';
 import { ContactPage } from './pages/ContactPage';
-import { FuturePortalPage } from './pages/FuturePortalPage';
 import { HomePage } from './pages/HomePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ProjectsPage } from './pages/ProjectsPage';

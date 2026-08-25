@@ -69,6 +69,10 @@ type ApplicationRow = {
   motivation: string;
   contribution: string;
   status: string;
+  account_status?: 'NONE' | 'INVITATION_SENT' | 'ACTIVE' | 'EXISTING_ACCOUNT';
+  invitation_sent_at?: string | null;
+  activated_at?: string | null;
+  approved_profile_id?: string | null;
   created_at: string;
 };
 
@@ -136,6 +140,7 @@ type AdminActionResult = {
   onboarding?: {
     email: string;
     inviteSent: boolean;
+    accountStatus?: string;
   };
 };
 
@@ -358,6 +363,13 @@ export function AdminPage() {
   async function updateApplicationStatus(id: string, status: string) {
     if (!session?.access_token) return;
 
+    if (
+      ['REJECTED', 'ARCHIVED'].includes(status) &&
+      !window.confirm(`Mark this application as ${formatLabel(status)}?`)
+    ) {
+      return;
+    }
+
     await runAction(
       `application-${id}-${status}`,
       async () => {
@@ -389,11 +401,35 @@ export function AdminPage() {
         await loadAdminData(session.access_token);
         setNotice(
           `Worker approved${result.profile?.username ? ` as ${result.profile.username}` : ''}. ${
-            result.onboarding?.inviteSent ? 'Supabase onboarding invite requested.' : ''
+            result.onboarding?.inviteSent
+              ? 'Supabase onboarding invite requested.'
+              : `Account status: ${formatLabel(result.onboarding?.accountStatus ?? 'ACTIVE')}.`
           }`
         );
       },
       'Worker approved.'
+    );
+  }
+
+  async function resendInvitation(id: string) {
+    if (!session?.access_token) return;
+
+    await runAction(
+      `application-${id}-resend-invitation`,
+      async () => {
+        const result = await adminFetch<{ message: string; accountStatus: string }>(
+          session.access_token,
+          `/api/admin/applications/${id}/resend-invitation`,
+          {
+            method: 'POST',
+            body: JSON.stringify({})
+          }
+        );
+
+        await loadAdminData(session.access_token);
+        setNotice(result.message || `Invitation status: ${formatLabel(result.accountStatus)}.`);
+      },
+      'Invitation resent.'
     );
   }
 
@@ -782,6 +818,9 @@ export function AdminPage() {
                         <DetailLine label="Country" value={item.country} />
                         <DetailLine label="Age" value={item.age} />
                         <DetailLine label="Experience" value={formatLabel(item.experience_level)} />
+                        <DetailLine label="Account Status" value={formatLabel(item.account_status ?? 'NONE')} />
+                        <DetailLine label="Invitation Sent" value={formatDate(item.invitation_sent_at ?? undefined)} />
+                        <DetailLine label="Activated" value={formatDate(item.activated_at ?? undefined)} />
                         <DetailLine label="Languages" value={item.programming_languages} />
                         <DetailLine label="Frameworks" value={item.frameworks} />
                         <DetailLine label="Technologies" value={item.technologies} />
@@ -796,9 +835,16 @@ export function AdminPage() {
                         <ActionButton busyAction={busyAction} id={`application-${item.id}-REVIEWING`} onClick={() => void updateApplicationStatus(item.id, 'REVIEWING')}>
                           Review
                         </ActionButton>
-                        <ActionButton busyAction={busyAction} id={`application-${item.id}-approve`} kind="primary" onClick={() => void approveApplication(item.id)}>
-                          Approve
-                        </ActionButton>
+                        {item.status === 'APPROVED' ? null : (
+                          <ActionButton busyAction={busyAction} id={`application-${item.id}-approve`} kind="primary" onClick={() => void approveApplication(item.id)}>
+                            Approve
+                          </ActionButton>
+                        )}
+                        {item.status === 'APPROVED' && item.account_status !== 'ACTIVE' ? (
+                          <ActionButton busyAction={busyAction} id={`application-${item.id}-resend-invitation`} kind="primary" onClick={() => void resendInvitation(item.id)}>
+                            Resend Invitation
+                          </ActionButton>
+                        ) : null}
                         <ActionButton busyAction={busyAction} id={`application-${item.id}-REJECTED`} onClick={() => void updateApplicationStatus(item.id, 'REJECTED')}>
                           Reject
                         </ActionButton>

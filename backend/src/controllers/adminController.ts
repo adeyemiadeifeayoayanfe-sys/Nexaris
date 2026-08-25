@@ -8,6 +8,7 @@ import {
   listJobApplications,
   listProjectRequests,
   listWorkers,
+  resendApplicationInvitation,
   updateApplicationStatus,
   updateProjectRequestStatus,
   updateWorkerStatus
@@ -188,6 +189,21 @@ export async function approveApplicationController(request: HttpRequest, respons
 
     throw error;
   }
+}
+
+export async function resendApplicationInvitationController(request: HttpRequest, response: HttpResponse) {
+  if (!request.params.id || !request.auth) {
+    return response.status(400).json({
+      error: 'Application id and admin auth are required'
+    });
+  }
+
+  return response.json(
+    await resendApplicationInvitation({
+      applicationId: request.params.id,
+      actorId: request.auth.userId
+    })
+  );
 }
 
 export async function listWorkersController(request: HttpRequest, response: HttpResponse) {
