@@ -42,6 +42,17 @@ const technologiesSchema = z.preprocess((value) => {
 export const createProjectSchema = z.object({
   requestId: z.uuid().optional(),
   name: z.string().trim().min(3).max(180),
+  projectType: z.enum([
+    'Website',
+    'Web Application',
+    'Landing Page',
+    'Dashboard',
+    'E-commerce Website',
+    'School Management System',
+    'Business Software',
+    'JavaScript Application',
+    'Other'
+  ]),
   clientName: z.string().trim().min(2).max(160),
   clientEmail: z.email().max(160).optional(),
   clientWhatsapp: z.string().trim().max(32).optional(),
@@ -90,6 +101,47 @@ export const restoreFileVersionSchema = z.object({
   versionId: z.uuid(),
   changeSummary: z.string().trim().max(240).optional()
 });
+
+const projectFileNameSchema = z.string()
+  .trim()
+  .min(1)
+  .max(120)
+  .refine((value) => !['.', '..'].includes(value), 'Invalid file name.')
+  .refine((value) => !/[\\/]/.test(value), 'File names cannot contain path separators.')
+  .refine((value) => !/[<>:"|?*\\x00-\\x1F]/.test(value), 'File name contains invalid characters.');
+
+const projectFilePathSchema = z.string()
+  .trim()
+  .min(1)
+  .max(500)
+  .refine((value) => !value.startsWith('/'), 'Path cannot start with /.')
+  .refine((value) => !value.endsWith('/'), 'Path cannot end with /.')
+  .refine((value) => !value.includes('//'), 'Path cannot contain empty segments.')
+  .refine((value) => !value.split('/').some((segment) => ['.', '..'].includes(segment)), 'Invalid path.')
+  .refine((value) => !/[\\<>:"|?*\\x00-\\x1F]/.test(value), 'Path contains invalid characters.');
+
+export const createProjectFileSchema = z.object({
+  projectId: z.uuid(),
+  name: projectFileNameSchema,
+  parentId: z.uuid().nullable().optional(),
+  content: z.string().max(200_000).default('')
+});
+
+export const createProjectFolderSchema = z.object({
+  projectId: z.uuid(),
+  name: projectFileNameSchema,
+  parentId: z.uuid().nullable().optional()
+});
+
+export const renameProjectFileSchema = z.object({
+  name: projectFileNameSchema
+});
+
+export const archiveProjectFileSchema = z.object({
+  reason: z.string().trim().max(240).optional()
+});
+
+export const projectFilePathSchemaForValidation = projectFilePathSchema;
 
 export const sendProjectMessageSchema = z.object({
   body: z.string().trim().min(1).max(4000),

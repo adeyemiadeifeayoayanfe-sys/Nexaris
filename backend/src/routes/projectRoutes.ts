@@ -3,6 +3,8 @@ import {
   addProjectMemberController,
   adminUpdateTaskController,
   createProjectController,
+  createProjectFileController,
+  createProjectFolderController,
   createTaskController,
   getProjectWorkspaceController,
   listAdminProjectsController,
@@ -11,6 +13,8 @@ import {
   listProjectMessagesController,
   restoreFileVersionController,
   saveProjectFileController,
+  renameProjectFileController,
+  archiveProjectFileController,
   sendProjectMessageController
 } from '../controllers/projectController.js';
 import { authenticate, requireRole } from '../middleware/authenticate.js';
@@ -24,6 +28,10 @@ projectRouter.post('/:id/messages', sendProjectMessageController);
 projectRouter.patch('/files/:id', saveProjectFileController);
 projectRouter.get('/files/:id/versions', listFileVersionsController);
 projectRouter.post('/files/:id/restore', restoreFileVersionController);
+projectRouter.post('/files', createProjectFileController);
+projectRouter.post('/folders', createProjectFolderController);
+projectRouter.patch('/files/:id/rename', renameProjectFileController);
+projectRouter.post('/files/:id/archive', archiveProjectFileController);
 
 projectRouter.use(requireRole(['ADMIN']));
 projectRouter.get('/', listAdminProjectsController);

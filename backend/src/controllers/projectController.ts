@@ -1,25 +1,26 @@
-import { ZodError } from 'zod';
-export {
-  listProjectMessagesController,
-  sendProjectMessageController
-} from './communicationController.js';
 import {
   addProjectMember,
   createProject,
+  createProjectFile,
+  createProjectFolder,
   createTask,
   getProjectWorkspace,
-  listFileVersions,
   listAdminProjects,
   listAdminTasks,
-  listWorkerProjects,
-  listWorkerTasks,
+  listFileVersions,
   restoreProjectFileVersion,
   saveProjectFile,
+  renameProjectFile,
+  archiveProjectFile,
   updateTaskAsAdmin,
+  listWorkerProjects,
+  listWorkerTasks,
   updateTaskAsWorker
 } from '../services/projectService.js';
+import { ZodError } from 'zod';
 import type { HttpRequest, HttpResponse } from '../types/http.js';
 import { formatZodError } from '../utils/http.js';
+import { listProjectMessages, sendProjectMessage } from '../services/communicationService.js';
 import {
   addProjectMemberSchema,
   adminUpdateTaskSchema,
@@ -27,6 +28,11 @@ import {
   createTaskSchema,
   restoreFileVersionSchema,
   saveProjectFileSchema,
+  sendProjectMessageSchema,
+  createProjectFileSchema,
+  createProjectFolderSchema,
+  renameProjectFileSchema,
+  archiveProjectFileSchema,
   workerUpdateTaskSchema
 } from '../validators/projectSchemas.js';
 
@@ -247,7 +253,169 @@ export async function saveProjectFileController(request: HttpRequest, response: 
   }
 }
 
-export async function listFileVersionsController(request: HttpRequest, response: HttpResponse) {
+
+export async function createProjectFileController(request: HttpRequest, response: HttpResponse) {
+  try {
+    if (!request.auth) {
+      return response.status(401).json({ error: 'Authentication required' });
+    }
+
+    const payload = createProjectFileSchema.parse(request.body);
+    const file = await createProjectFile({
+      projectId: payload.projectId,
+      name: payload.name,
+      parentId: payload.parentId,
+      content: payload.content,
+      viewer: {
+        userId: request.auth.userId,
+        role: request.auth.role
+      }
+    });
+
+    return response.status(201).json({ file });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return response.status(400).json({
+        error: 'Validation failed',
+        fields: formatZodError(error)
+      });
+    }
+
+    throw error;
+  }
+}
+
+export async function createProjectFolderController(request: HttpRequest, response: HttpResponse) {
+  try {
+    if (!request.auth) {
+      return response.status(401).json({ error: 'Authentication required' });
+    }
+
+    const payload = createProjectFolderSchema.parse(request.body);
+    const folder = await createProjectFolder({
+      projectId: payload.projectId,
+      name: payload.name,
+      parentId: payload.parentId,
+      viewer: {
+        userId: request.auth.userId,
+        role: request.auth.role
+      }
+    });
+
+    return response.status(201).json({ folder });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return response.status(400).json({
+        error: 'Validation failed',
+        fields: formatZodError(error)
+      });
+    }
+
+    throw error;
+  }
+}
+
+export async function renameProjectFileController(request: HttpRequest, response: HttpResponse) {
+  try {
+    if (!request.params.id || !request.auth) {
+      return response.status(400).json({ error: 'File id and auth are required' });
+    }
+
+    const payload = renameProjectFileSchema.parse(request.body);
+    const file = await renameProjectFile({
+      fileId: request.params.id,
+      name: payload.name,
+      viewer: {
+        userId: request.auth.userId,
+        role: request.auth.role
+      }
+    });
+
+    return response.json({ file });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return response.status(400).json({
+        error: 'Validation failed',
+        fields: formatZodError(error)
+      });
+    }
+
+    throw error;
+  }
+}
+
+export async function archiveProjectFileController(request: HttpRequest, response: HttpResponse) {
+  try {
+    if (!request.params.id || !request.auth) {
+      return response.status(400).json({ error: 'File id and auth are required' });
+    }
+
+    const payload = archiveProjectFileSchema.parse(request.body);
+    const result = await archiveProjectFile({
+      fileId: request.params.id,
+      reason: payload.reason,
+      viewer: {
+        userId: request.auth.userId,
+        role: request.auth.role
+      }
+    });
+
+    return response.json({ result });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return response.status(400).json({
+        error: 'Validation failed',
+        fields: formatZodError(error)
+      });
+    }
+
+    throw error;
+  }
+}
+
+export async function listProjectMessagesController(request: HttpRequest, response: HttpResponse) {
+  if (!request.params.id || !request.auth) {
+    return response.status(400).json({ error: 'Project id and auth are required' });
+  }
+
+  return response.json({
+    messages: await listProjectMessages(request.params.id, {
+      userId: request.auth.userId,
+      role: request.auth.role
+    })
+  });
+}
+
+export async function sendProjectMessageController(request: HttpRequest, response: HttpResponse) {
+  try {
+    if (!request.params.id || !request.auth) {
+      return response.status(400).json({ error: 'Project id and auth are required' });
+    }
+
+    const payload = sendProjectMessageSchema.parse(request.body);
+    const message = await sendProjectMessage({
+      projectId: request.params.id,
+      body: payload.body,
+      parentMessageId: payload.parentMessageId,
+      mentions: payload.mentions,
+      viewer: {
+        userId: request.auth.userId,
+        role: request.auth.role
+      }
+    });
+
+    return response.status(201).json({ message });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return response.status(400).json({
+        error: 'Validation failed',
+        fields: formatZodError(error)
+      });
+    }
+
+    throw error;
+  }
+}export async function listFileVersionsController(request: HttpRequest, response: HttpResponse) {
   if (!request.params.id || !request.auth) {
     return response.status(400).json({ error: 'File id and auth are required' });
   }

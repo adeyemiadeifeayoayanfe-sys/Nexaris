@@ -77,6 +77,12 @@ export function WorkspacePage() {
   const [messageDraft, setMessageDraft] = useState('');
   const [saveState, setSaveState] = useState<'saved' | 'dirty' | 'saving'>('saved');
   const [error, setError] = useState<string | null>(null);
+  const [creatingType, setCreatingType] = useState<'file' | 'folder' | null>(null);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemParentId, setNewItemParentId] = useState<string | null>(null);
+  const [renamingItemId, setRenamingItemId] = useState<string | null>(null);
+  const [renameName, setRenameName] = useState('');
+
 
   async function loadWorkspace(accessToken: string) {
     if (!projectId) return;
@@ -169,6 +175,110 @@ export function WorkspacePage() {
     await loadWorkspace(session.access_token);
   }
 
+  async function createWorkspaceItem() {
+    if (!session?.access_token || !projectId || !newItemName.trim() || !creatingType) return;
+
+    setError(null);
+
+    try {
+      if (creatingType === 'file') {
+        const result = await authedFetch<{ file: ProjectFile }>(
+          session.access_token,
+          '/api/projects/files',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              projectId,
+              name: newItemName.trim(),
+              parentId: newItemParentId,
+              content: ''
+            })
+          }
+        );
+
+        setNewItemName('');
+        setCreatingType(null);
+        setNewItemParentId(null);
+        await loadWorkspace(session.access_token);
+        setSelectedFileId(result.file.id);
+      } else {
+        await authedFetch<{ folder: ProjectFile }>(
+          session.access_token,
+          '/api/projects/folders',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              projectId,
+              name: newItemName.trim(),
+              parentId: newItemParentId
+            })
+          }
+        );
+
+        setNewItemName('');
+        setCreatingType(null);
+        setNewItemParentId(null);
+        await loadWorkspace(session.access_token);
+      }
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Unable to create workspace item.');
+    }
+  }
+
+  async function renameWorkspaceItem() {
+    if (!session?.access_token || !renamingItemId || !renameName.trim()) return;
+
+    setError(null);
+
+    try {
+      await authedFetch<{ file: ProjectFile }>(
+        session.access_token,
+        `/api/projects/files/${renamingItemId}/rename`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: renameName.trim()
+          })
+        }
+      );
+
+      setRenamingItemId(null);
+      setRenameName('');
+      await loadWorkspace(session.access_token);
+    } catch (renameError) {
+      setError(renameError instanceof Error ? renameError.message : 'Unable to rename workspace item.');
+    }
+  }
+
+  async function archiveWorkspaceItem(file: ProjectFile) {
+    if (!session?.access_token) return;
+
+    setError(null);
+
+    try {
+      await authedFetch<{ result: { id: string; path: string; status: string } }>(
+        session.access_token,
+        `/api/projects/files/${file.id}/archive`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            reason: `Archived ${file.path} from workspace`
+          })
+        }
+      );
+
+      if (selectedFileId === file.id) {
+        setSelectedFileId(null);
+        setDraft('');
+        setVersions([]);
+      }
+
+      await loadWorkspace(session.access_token);
+    } catch (archiveError) {
+      setError(archiveError instanceof Error ? archiveError.message : 'Unable to archive workspace item.');
+    }
+  }
+
   async function sendMessage() {
     if (!session?.access_token || !projectId || !messageDraft.trim()) return;
 
@@ -205,17 +315,157 @@ export function WorkspacePage() {
 
       <section className="workspace-grid">
         <aside className="workspace-panel file-tree">
-          <h2>Files</h2>
+          <div className="workspace-panel-header">
+            <h2>Files</h2>
+            <div className="workspace-file-actions">
+              <button
+                className="button button-secondary"
+                onClick={() => {
+                  setCreatingType('file');
+                  setNewItemName('');
+                  setNewItemParentId(null);
+                }}
+                type="button"
+              >
+                New File
+              </button>
+              <button
+                className="button button-secondary"
+                onClick={() => {
+                  setCreatingType('folder');
+                  setNewItemName('');
+                  setNewItemParentId(null);
+                }}
+                type="button"
+              >
+                New Folder
+              </button>
+            </div>
+          </div>
+
+          {creatingType ? (
+            <div className="workspace-create-form">
+              <strong>{creatingType === 'file' ? 'Create File' : 'Create Folder'}</strong>
+
+              <input
+                aria-label="New item name"
+                placeholder={creatingType === 'file' ? 'example.js' : 'components'}
+                value={newItemName}
+                onChange={(event) => setNewItemName(event.target.value)}
+              />
+
+              <select
+                aria-label="Parent folder"
+                value={newItemParentId ?? ''}
+                onChange={(event) => setNewItemParentId(event.target.value || null)}
+              >
+                <option value="">Root</option>
+                {(workspace?.files ?? [])
+                  .filter((file) => file.is_directory)
+                  .sort((a, b) => a.path.localeCompare(b.path))
+                  .map((folder) => (
+                    <option key={folder.id} value={folder.id}>
+                      {folder.path}
+                    </option>
+                  ))}
+              </select>
+
+              <div className="workspace-create-actions">
+                <button
+                  className="button button-primary"
+                  disabled={!newItemName.trim()}
+                  onClick={() => void createWorkspaceItem()}
+                  type="button"
+                >
+                  Create
+                </button>
+                <button
+                  className="button button-secondary"
+                  onClick={() => {
+                    setCreatingType(null);
+                    setNewItemName('');
+                    setNewItemParentId(null);
+                  }}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {(workspace?.files ?? []).map((file) => (
-            <button
-              className={`file-node ${selectedFileId === file.id ? 'file-node-active' : ''}`}
-              disabled={file.is_directory}
-              key={file.id}
-              onClick={() => setSelectedFileId(file.id)}
-              type="button"
-            >
-              {file.is_directory ? `${file.path}/` : file.path}
-            </button>
+            <div className="file-node-row" key={file.id}>
+              {renamingItemId === file.id ? (
+                <div className="workspace-rename-form">
+                  <input
+                    aria-label={`Rename ${file.path}`}
+                    value={renameName}
+                    onChange={(event) => setRenameName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        void renameWorkspaceItem();
+                      }
+
+                      if (event.key === 'Escape') {
+                        setRenamingItemId(null);
+                        setRenameName('');
+                      }
+                    }}
+                  />
+                  <button
+                    className="button button-primary"
+                    disabled={!renameName.trim()}
+                    onClick={() => void renameWorkspaceItem()}
+                    type="button"
+                  >
+                    Save
+                  </button>
+                  <button
+                    className="button button-secondary"
+                    onClick={() => {
+                      setRenamingItemId(null);
+                      setRenameName('');
+                    }}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    className={`file-node ${selectedFileId === file.id ? 'file-node-active' : ''}`}
+                    disabled={file.is_directory}
+                    onClick={() => setSelectedFileId(file.id)}
+                    type="button"
+                  >
+                    {file.is_directory ? `${file.path}/` : file.path}
+                  </button>
+
+                  <button
+                    aria-label={`Rename ${file.path}`}
+                    className="file-action-button"
+                    onClick={() => {
+                      setRenamingItemId(file.id);
+                      setRenameName(file.name);
+                    }}
+                    type="button"
+                  >
+                    Rename
+                  </button>
+
+                  <button
+                    aria-label={`Archive ${file.path}`}
+                    className="file-action-button"
+                    onClick={() => void archiveWorkspaceItem(file)}
+                    type="button"
+                  >
+                    Archive
+                  </button>
+                </>
+              )}
+            </div>
           ))}
         </aside>
 

@@ -219,6 +219,7 @@ export function AdminPage() {
   const [projectForm, setProjectForm] = useState({
     requestId: '',
     name: '',
+    projectType: 'Website',
     clientName: '',
     clientEmail: '',
     clientWhatsapp: '',
@@ -493,6 +494,7 @@ export function AdminPage() {
         setProjectForm({
           requestId: '',
           name: '',
+          projectType: 'Website',
           clientName: '',
           clientEmail: '',
           clientWhatsapp: '',
@@ -591,6 +593,7 @@ export function AdminPage() {
     setProjectForm({
       requestId: request.id,
       name: request.project_title,
+      projectType: request.project_type,
       clientName: request.full_name,
       clientEmail: request.email,
       clientWhatsapp: request.whatsapp_number,
@@ -874,6 +877,20 @@ export function AdminPage() {
                 <label>
                   <span>Project Name</span>
                   <input required minLength={3} value={projectForm.name} onChange={(event) => setProjectForm({ ...projectForm, name: event.target.value })} />
+                </label>
+                <label>
+                  <span>Project Type</span>
+                  <select value={projectForm.projectType} onChange={(event) => setProjectForm({ ...projectForm, projectType: event.target.value })}>
+                    <option value="Website">Website</option>
+                    <option value="Web Application">Web Application</option>
+                    <option value="Landing Page">Landing Page</option>
+                    <option value="Dashboard">Dashboard</option>
+                    <option value="E-commerce Website">E-commerce Website</option>
+                    <option value="School Management System">School Management System</option>
+                    <option value="Business Software">Business Software</option>
+                    <option value="JavaScript Application">JavaScript Application</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </label>
                 <label>
                   <span>Client Name</span>

@@ -12,6 +12,16 @@ export interface ProfileRecord {
 
 export type request_status = 'PENDING' | 'REVIEWING' | 'ACCEPTED' | 'DECLINED' | 'ARCHIVED';
 export type application_status = 'PENDING' | 'REVIEWING' | 'APPROVED' | 'REJECTED' | 'ARCHIVED';
+export type project_type =
+  | 'Website'
+  | 'Web Application'
+  | 'Landing Page'
+  | 'Dashboard'
+  | 'E-commerce Website'
+  | 'School Management System'
+  | 'Business Software'
+  | 'JavaScript Application'
+  | 'Other';
 export type project_status =
   | 'DRAFT'
   | 'PLANNING'
