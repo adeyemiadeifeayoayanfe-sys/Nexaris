@@ -19,6 +19,7 @@
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "express-rate-limit": "^8.7.0",
+    "object-assign": "^4.1.1",
     "typescript": "^5.9.3",
     "zod": "^4.1.5"
   },
